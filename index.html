@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pentatonic Trainer — Major / Minor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-white antialiased">
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useMemo, useState } = React;
+      const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+      const KEY_OPTIONS = [...NOTES];
+      const OPEN_STRINGS_6to1 = ["E","A","D","G","B","E"];
+      function idx(note){ return NOTES.indexOf(note); }
+      const INTERVALS = { minor: [0,3,5,7,10], major: [0,2,4,7,9] };
+      const DEGREE_LABELS = { minor: {0:"1",3:"♭3",5:"4",7:"5",10:"♭7"}, major: {0:"1",2:"2",4:"3",7:"5",9:"6"} };
+      const MINOR_BOX1_OFFSETS = [[0,3],[0,2],[0,2],[0,2],[0,3],[0,3]];
+      function buildScaleSet(rootIdx, kind){ const s=new Set(); for(const sem of INTERVALS[kind]) s.add((rootIdx+sem)%12); return s; }
+      function degreeFor(rootIdx, noteIdx, kind){ const rel=(noteIdx-rootIdx+12)%12; const map=DEGREE_LABELS[kind]; return map[rel] ?? null; }
+      function rootFretOn6thString(rootIdx){ const lowE = idx("E"); for(let f=0; f<=12; f++){ if((lowE+f)%12===rootIdx) return f; } return 0; }
+
+      function CellTooltip({ label }){
+        return <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/80 px-2 py-1 text-xs text-white shadow-md">{label}</div>;
+      }
+
+      function FretCell({ noteName, degree, label, visible, isRoot }){
+        const [hover, setHover] = React.useState(false);
+        return (
+          <div onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)} className="relative flex h-12 w-12 items-center justify-center rounded-xl border border-zinc-200 bg-white/70 shadow-sm">
+            <div className="pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 border-t border-zinc-300"></div>
+            {visible && (
+              <div className={"relative z-10 flex h-8 w-8 items-center justify-center rounded-full "+(isRoot?"bg-red-500 text-white ring-2 ring-red-200":"bg-sky-500/90 text-white ring-2 ring-sky-200")}>
+                <span className="text-[11px] font-semibold leading-none">{label ?? ""}</span>
+              </div>
+            )}
+            {hover && <div className="absolute z-20"><CellTooltip label={<span>{noteName} {degree ? <em>({degree})</em> : ""}</span>} /></div>}
+          </div>
+        );
+      }
+
+      function PentatonicInteractive(){
+        const [keyNote, setKeyNote] = useState("A");
+        const [kind, setKind] = useState("minor");
+        const [mode, setMode] = useState("scale");
+        const [labelMode, setLabelMode] = useState("degrees");
+
+        const rootIdx = useMemo(()=>idx(keyNote), [keyNote]);
+        const scaleSet = useMemo(()=>buildScaleSet(rootIdx, kind), [rootIdx, kind]);
+        const box1BaseFretMinor = useMemo(()=>rootFretOn6thString(rootIdx), [rootIdx]);
+
+        const box1BaseFret = React.useMemo(()=>{
+          if(mode!=="box1") return 0;
+          if(kind==="minor") return box1BaseFretMinor;
+          return (box1BaseFretMinor - 3 + 24) % 12; // major box1 = minor box1 - 3 frets
+        }, [mode, kind, box1BaseFretMinor]);
+
+        const tip = useMemo(()=> kind==="minor"
+          ? "Минорная пентатоника: 1–♭3–4–5–♭7. Box 1 — от корня на 6-й струне."
+          : "Мажорная пентатоника: 1–2–3–5–6. Лайфхак: Box 1 мажора = Box 1 минора на 3 лада ниже."
+        , [kind]);
+
+        const Toggle = ({ value, onChange, options, ariaLabel }) => (
+          <div className="inline-flex overflow-hidden rounded-2xl border border-zinc-300 bg-white shadow-sm">
+            {options.map((opt,i)=>(
+              <button key={opt.value} onClick={()=>onChange(opt.value)} aria-label={ariaLabel}
+                className={"px-3 py-2 text-sm font-medium transition hover:bg-zinc-50 " + (opt.value===value?"bg-zinc-100 text-zinc-900":"text-zinc-600") + (i!==options.length-1?" border-r border-zinc-300":"")}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        );
+
+        const box1Cells = React.useMemo(()=>{
+          const map = new Set();
+          if(mode!=="box1") return map;
+          const base = box1BaseFret;
+          MINOR_BOX1_OFFSETS.forEach((pair,s)=>{
+            pair.forEach(off=>{
+              const fret = base + off;
+              if(fret>=0 && fret<=12) map.add(`${s}:${fret}`);
+            });
+          });
+          return map;
+        }, [mode, box1BaseFret]);
+
+        return (
+          <div className="mx-auto max-w-6xl p-6">
+            <h1 className="mb-2 text-2xl font-bold">Pentatonic Trainer — Major / Minor</h1>
+            <p className="mb-4 text-zinc-600">Интерактивная «картинка», чтобы запомнить мажор/минорные пентатоники на гитаре. Выбирайте тональность, вид масштаба и режим отображения: все ноты или только Box 1.</p>
+
+            <div className="mb-5 flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-zinc-600">Тональность</span>
+                <select className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm" value={keyNote} onChange={e=>setKeyNote(e.target.value)}>
+                  {KEY_OPTIONS.map(k=><option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
+
+              <Toggle ariaLabel="Тип пентатоники" value={kind} onChange={v=>setKind(v)} options={[{value:"minor",label:"Минор"},{value:"major",label:"Мажор"}]} />
+              <Toggle ariaLabel="Режим" value={mode} onChange={v=>setMode(v)} options={[{value:"scale",label:"Все ноты (0–12)"},{value:"box1",label:"Только Box 1"}]} />
+              <Toggle ariaLabel="Подписи" value={labelMode} onChange={v=>setLabelMode(v)} options={[{value:"degrees",label:"Ступени"},{value:"notes",label:"Ноты"},{value:"off",label:"Без подписей"}]} />
+            </div>
+
+            <div className="mb-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200"><b>Подсказка:</b> {tip}</div>
+
+            <div className="relative overflow-x-auto rounded-2xl border border-zinc-200 bg-gradient-to-b from-stone-50 to-stone-100 p-4 shadow-sm">
+              <div className="mb-2 flex items-center gap-4 pl-14 text-xs text-zinc-500">
+                <span className="w-10 shrink-0"></span>
+                {Array.from({length:13}).map((_,f)=><div key={f} className="w-12 text-center">{f}</div>)}
+              </div>
+
+              <div className="grid grid-cols-[3.5rem_repeat(13,3rem)] gap-1">
+                {Array.from({length:6}).map((_,sIdx6)=>{
+                  const stringNumber = 6 - sIdx6;
+                  const openNoteName = OPEN_STRINGS_6to1[sIdx6];
+                  const openIdx = idx(openNoteName);
+                  return (
+                    <React.Fragment key={sIdx6}>
+                      <div className="flex h-12 items-center justify-between pr-2 text-xs text-zinc-600">
+                        <span className="font-medium">{stringNumber} струна</span>
+                        <span className="rounded bg-white/70 px-2 py-0.5">{openNoteName}</span>
+                      </div>
+
+                      {Array.from({length:13}).map((_,f)=>{
+                        const noteIndex = (openIdx + f) % 12;
+                        const isInScale = scaleSet.has(noteIndex);
+                        const isRoot = noteIndex === rootIdx;
+
+                        const inBox1 = (()=>{
+                          const base = box1BaseFret;
+                          let has = false;
+                          if(mode === "box1"){
+                            const pairs = MINOR_BOX1_OFFSETS[sIdx6];
+                            for(const off of pairs){ if(base + off === f){ has = true; break; } }
+                          }
+                          return has;
+                        })();
+
+                        const shouldShow = mode === "scale" ? isInScale : inBox1;
+
+                        let label = null;
+                        if(shouldShow){
+                          if(labelMode === "degrees") label = degreeFor(rootIdx, noteIndex, kind);
+                          else if(labelMode === "notes") label = NOTES[noteIndex];
+                        }
+
+                        return <FretCell key={`${sIdx6}-${f}`} noteName={NOTES[noteIndex]} degree={degreeFor(rootIdx, noteIndex, kind)} label={label} visible={shouldShow} isRoot={isRoot && shouldShow} />;
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              <div className="pointer-events-none absolute left-[3.9rem] top-[3.25rem] h-[calc(100%-3.5rem)] w-1 bg-zinc-300/80"></div>
+            </div>
+
+            <div className="mt-4 text-sm text-zinc-600">
+              <ul className="list-disc pl-5">
+                <li><b>Как запомнить картинку:</b> у Box 1 две «широкие» струны (2 и 1) с шагом +3 лада, середина (5–3 струны) — шаг +2. У 6-й тоже +3. Корни — крупные кружки.</li>
+                <li><b>Мажор ↔ Минор:</b> тот же рисунок, но для мажора «сдвинь» Box 1 на <i>три</i> лада влево (ниже), сохраняя те же пальцевки.</li>
+                <li>В режиме «Все ноты» подсвечены все позиции пентатоники между 0 и 12 ладами — это общая карта.</li>
+              </ul>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<PentatonicInteractive />);
+    </script>
+  </body>
+</html>
